@@ -1,0 +1,11 @@
+version: '3.4'
+
+services:
+  crkn-digirati-editor:
+    image: crkn-digirati-editor
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    env_file: ".env"
+    ports:
+      - 8000:8000

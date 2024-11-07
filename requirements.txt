@@ -1,0 +1,15 @@
+CouchDB==1.2
+fastapi==0.115.2
+Pillow==11.0.0
+python-dotenv==1.0.1
+python_swiftclient==4.6.0
+Requests==2.32.3
+typing_extensions==4.12.2
+python-multipart==0.0.12
+fastapi[standard]
+fastapi-sso
+python-jose[cryptography]
+boto3
+botocore
+msal
+httpx
