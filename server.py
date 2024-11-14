@@ -19,6 +19,7 @@ from jose import jwt
 from typing import List
 from typing_extensions import Annotated
 from dotenv import load_dotenv
+from noid import mint
 
 # Load environment variables
 load_dotenv(".env")
@@ -40,16 +41,23 @@ SWIFT_USERNAME = os.getenv("SWIFT_USERNAME")
 SWIFT_PASSWORD = os.getenv("SWIFT_PASSWORD")
 SWIFT_PREAUTH_URL = os.getenv("SWIFT_PREAUTH_URL")
 
+IIIF_SWIFT_AUTH_URL = os.getenv("IIIF_SWIFT_AUTH_URL")
+IIIF_SWIFT_USERNAME = os.getenv("IIIF_SWIFT_USERNAME")
+IIIF_SWIFT_PASSWORD = os.getenv("IIIF_SWIFT_PASSWORD")
+IIIF_SWIFT_PREAUTH_URL = os.getenv("IIIF_SWIFT_PREAUTH_URL")
+
 S3SOURCE_ENDPOINT = os.getenv("S3SOURCE_ENDPOINT")
 S3SOURCE_ACCESS_KEY_ID = os.getenv("S3SOURCE_ACCESS_KEY_ID")
 S3SOURCE_SECRET_KEY = os.getenv("S3SOURCE_SECRET_KEY")
 S3SOURCE_ACCESSFILES_BUCKET_NAME = os.getenv("S3SOURCE_ACCESSFILES_BUCKET_NAME")
 
-COUCHDB_USER = os.getenv("COUCHDB_USER")
-COUCHDB_PASSWORD = os.getenv("COUCHDB_PASSWORD")
-COUCHDB_URL = os.getenv("COUCHDB_URL")
-
 PRES_API_HOST = os.getenv("PRES_API_HOST")
+
+#COUCHDB_USER = os.getenv("COUCHDB_USER")
+#COUCHDB_PASSWORD = os.getenv("COUCHDB_PASSWORD")
+#COUCHDB_URL = os.getenv("COUCHDB_URL")
+#couch = couchdb.Server(f'http://{COUCHDB_USER}:{COUCHDB_PASSWORD}@{COUCHDB_URL}/')
+#db_canvas = couch['canvas']
 
 # API URLs
 image_api_url = "https://image-tor.canadiana.ca"
@@ -57,11 +65,17 @@ presentation_api_url = "https://crkn-iiif-presentation-api.azurewebsites.net"
 crkn_digirati_editor_api_url = "https://crkn-editor.azurewebsites.net"
 
 # Initialize connections
-conn = swiftclient.Connection(
+connCanvas = swiftclient.Connection(
     authurl=SWIFT_AUTH_URL,
     user=SWIFT_USERNAME,
     key=SWIFT_PASSWORD,
     preauthurl=SWIFT_PREAUTH_URL,
+)
+connIIIF = swiftclient.Connection(
+    user=IIIF_SWIFT_USERNAME,
+    key=IIIF_SWIFT_PASSWORD,
+    authurl=IIIF_SWIFT_AUTH_URL,
+    preauthurl=IIIF_SWIFT_PREAUTH_URL
 )
 
 s3_conn = boto3.client(
@@ -72,15 +86,25 @@ s3_conn = boto3.client(
     config=botocore.client.Config(signature_version="s3"),
 )
 
-couch = couchdb.Server(f'http://{COUCHDB_USER}:{COUCHDB_PASSWORD}@{COUCHDB_URL}/')
-db_canvas = couch['canvas']
-
 # Helper functions
 def mint_noid(noid_type):
-    url = f"{NOID_SERVER}/mint/1/{noid_type}"
-    response = requests.post(url)
-    response_data = response.json()
-    return response_data["ids"][0]
+    # Generate a NOID, like '69429/<type>0901zg73q7c'
+    generated_noid = mint(template='zeedeedeedk', naa='69429')
+    if noid_type == "canvas":
+        generated_noid = generated_noid[:5] + '/c' + generated_noid[6:]
+        file, heads = get_file_from_swift(generated_noid, "access-files")
+        if file:
+            mint_noid(noid_type)
+        else:
+            return generated_noid
+    elif noid_type == "manifest":
+        generated_noid = generated_noid[:5] + '/m' + generated_noid[6:]
+        file, heads = get_iiif_from_swift(generated_noid + "/manifest.json")
+        if file:
+            mint_noid(noid_type)
+        else:
+            return generated_noid
+
 
 def convert_image(source_file, output_path):
     original = Image.open(source_file)
@@ -88,6 +112,7 @@ def convert_image(source_file, output_path):
     output = Image.open(output_path)
     return {"width": output.width, "height": output.height, "size": output.size}
 
+'''
 def save_canvas(noid, encoded_noid, width, height, size, md5):
     db_canvas.save({
         "_id": noid,
@@ -104,17 +129,25 @@ def save_canvas(noid, encoded_noid, width, height, size, md5):
             "url": f"{image_api_url}/iiif/2/{encoded_noid}/info.json"
         }
     })
+'''
 
 def save_image_to_swift(local_filename, swift_filename, container):
     with open(local_filename, "rb") as local_file:
         file_content = local_file.read()
         file_md5_hash = hashlib.md5(file_content).hexdigest()
-        conn.put_object(container, swift_filename, contents=file_content)
+        connCanvas.put_object(container, swift_filename, contents=file_content)
     return file_md5_hash
 
 def get_file_from_swift(swift_filename, container):
     try:
-        resp_headers, obj_contents = conn.get_object(container, swift_filename)
+        resp_headers, obj_contents = connCanvas.get_object(container, swift_filename)
+        return resp_headers, obj_contents
+    except:
+        return None, None
+
+def get_iiif_from_swift(swift_filename):
+    try:
+        resp_headers, obj_contents = connIIIF.get_object("IIIF", swift_filename)
         return resp_headers, obj_contents
     except:
         return None, None
@@ -131,6 +164,7 @@ def process_file_or_url(file_or_url, is_url, manifest_noid):
         source_file = io.BytesIO(file_or_url)
 
     canvas_noid = mint_noid("canvas")
+    print("new canvas id:", canvas_noid)
     encoded_canvas_noid = canvas_noid.replace("/", "%2F")
     swift_filename = f"{canvas_noid}.jpg"
     local_filename = f"{encoded_canvas_noid}.jpg"
@@ -141,7 +175,7 @@ def process_file_or_url(file_or_url, is_url, manifest_noid):
     # Save image to swift storage
     swift_md5 = save_image_to_swift(local_filename, swift_filename, "access-files")
     if swift_md5:
-        save_canvas(canvas_noid, encoded_canvas_noid, convert_info['width'], convert_info['height'], convert_info['size'], swift_md5)
+        #save_canvas(canvas_noid, encoded_canvas_noid, convert_info['width'], convert_info['height'], convert_info['size'], swift_md5)
 
         # Prepare the canvas data to return
         return {
@@ -326,7 +360,6 @@ async def create_files(prefix, noid, request: Request, authorized: bool = Depend
             content={"success": False, "message": f"Error: {str(e)}"},
             status_code=500
         )
-
 
 @app.post("/uploadfiles/{prefix}/{noid}")
 async def upload_files(prefix, noid, files: List[bytes] = File(...), authorized: bool = Depends(verify_token)):
