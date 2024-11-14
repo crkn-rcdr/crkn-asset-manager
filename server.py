@@ -88,48 +88,29 @@ s3_conn = boto3.client(
 
 # Helper functions
 def mint_noid(noid_type):
-    # Generate a NOID, like '69429/<type>0901zg73q7c'
+    #TODO: replace with call to new ark service
+    # Generate a NOID, like '69429/<type>0901zg73q7c' and make sure its unique
     generated_noid = mint(template='zeedeedeedk', naa='69429')
     if noid_type == "canvas":
         generated_noid = generated_noid[:5] + '/c' + generated_noid[6:]
-        file, heads = get_file_from_swift(generated_noid, "access-files")
+        file, heads = get_file_from_swift(f"{generated_noid}.jpg", "access-files")
         if file:
             mint_noid(noid_type)
         else:
             return generated_noid
     elif noid_type == "manifest":
         generated_noid = generated_noid[:5] + '/m' + generated_noid[6:]
-        file, heads = get_iiif_from_swift(generated_noid + "/manifest.json")
+        file, heads = get_iiif_from_swift(f"{generated_noid}/manifest.json")
         if file:
             mint_noid(noid_type)
         else:
             return generated_noid
-
 
 def convert_image(source_file, output_path):
     original = Image.open(source_file)
     original.save(output_path, quality=80)
     output = Image.open(output_path)
     return {"width": output.width, "height": output.height, "size": output.size}
-
-'''
-def save_canvas(noid, encoded_noid, width, height, size, md5):
-    db_canvas.save({
-        "_id": noid,
-        "master": {
-            "width": width,
-            "extension": "jpg",
-            "md5": md5,
-            "size": size,
-            "height": height,
-            "mime": "image/jpeg"
-        },
-        "source": {
-            "from": "IIIF",
-            "url": f"{image_api_url}/iiif/2/{encoded_noid}/info.json"
-        }
-    })
-'''
 
 def save_image_to_swift(local_filename, swift_filename, container):
     with open(local_filename, "rb") as local_file:
@@ -316,6 +297,7 @@ async def new_id():
         "id": mint_noid("manifest")
     }
 
+# TODO: Add a line calling map ark to slug in new ark service
 @app.post("/savemanifest/{prefix}/{noid}")
 async def create_files(prefix, noid, request: Request, authorized: bool = Depends(verify_token)):
     if not authorized:
