@@ -134,7 +134,7 @@ def get_iiif_from_swift(swift_filename):
         return None, None
 
 # Helper function to process each file or URL
-def process_file_or_url(file_or_url, is_url, manifest_noid):
+def process_file_or_url(pos, file_or_url, is_url, manifest_noid):
     if is_url:
         response = requests.get(file_or_url)
         if response.status_code != 200:
@@ -144,8 +144,8 @@ def process_file_or_url(file_or_url, is_url, manifest_noid):
     else:
         source_file = io.BytesIO(file_or_url)
 
-    canvas_noid = mint_noid("canvas")
-    print("new canvas id:", canvas_noid)
+    canvas_noid = manifest_noid + f"-p{pos}" #mint_noid("canvas")
+    print("new canvas id:", canvas_noid) #es: 69429/mCa08E9Je9k-p3
     encoded_canvas_noid = canvas_noid.replace("/", "%2F")
     swift_filename = f"{canvas_noid}.jpg"
     local_filename = f"{encoded_canvas_noid}.jpg"
@@ -343,23 +343,23 @@ async def create_files(prefix, noid, request: Request, authorized: bool = Depend
             status_code=500
         )
 
-@app.post("/uploadfiles/{prefix}/{noid}")
-async def upload_files(prefix, noid, files: List[bytes] = File(...), authorized: bool = Depends(verify_token)):
+@app.post("/uploadfiles/{prefix}/{noid}/{pos}")
+async def upload_files(prefix, noid, pos, files: List[bytes] = File(...), authorized: bool = Depends(verify_token)):
     if not authorized:
         return JSONResponse(content={"message": "You are not authorized to make this request."}, status_code=403)
     manifest_noid = f"{prefix}/{noid}"
     canvases = []
     for file in files:
         try:
-            canvas_data = process_file_or_url(file, is_url=False, manifest_noid=manifest_noid)
+            canvas_data = process_file_or_url(pos, file, is_url=False, manifest_noid=manifest_noid)
             if canvas_data:
                 canvases.append(canvas_data)
         except ValueError as e:
             return JSONResponse(content={"message": str(e)}, status_code=400)
     return {"canvases": canvases}
 
-@app.post("/createfilesfromurl/{prefix}/{noid}")
-async def create_files_from_url(prefix, noid, request: Request, authorized: bool = Depends(verify_token)):
+@app.post("/createfilesfromurl/{prefix}/{noid}/{pos}")
+async def create_files_from_url(prefix, noid, pos, request: Request, authorized: bool = Depends(verify_token)):
     if not authorized:
         return JSONResponse(content={"message": "You are not authorized to make this request."}, status_code=403)
     manifest_noid = f"{prefix}/{noid}"
@@ -367,7 +367,7 @@ async def create_files_from_url(prefix, noid, request: Request, authorized: bool
     canvases = []
     for url in data['urls']:
         try:
-            canvas_data = process_file_or_url(url, is_url=True, manifest_noid=manifest_noid)
+            canvas_data = process_file_or_url(pos, url, is_url=True, manifest_noid=manifest_noid)
             if canvas_data:
                 canvases.append(canvas_data)
         except ValueError as e:
