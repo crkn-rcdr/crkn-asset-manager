@@ -20,7 +20,8 @@ from typing import List
 from typing_extensions import Annotated
 from dotenv import load_dotenv
 from noid import mint
-
+import random
+import string
 # Load environment variables
 load_dotenv(".env")
 
@@ -86,25 +87,78 @@ s3_conn = boto3.client(
     config=botocore.client.Config(signature_version="s3"),
 )
 
+# TODO - replace with call to new ARK
+def mint_noid(noid_type):
+    # Ensure noid_type is either 'canvas' or 'manifest'
+    if noid_type not in ['canvas', 'manifest']:
+        raise ValueError("noid_type must be 'canvas' or 'manifest'")
+
+    # Define the prefix
+    prefix = "69429/"
+
+    # Choose the type part: 'm' for manifest, or 'c' for canvas
+    type_char = noid_type[0]  # 'm' for manifest, 'c' for canvas
+
+    # Loop until we get a unique NOID that matches the regex
+    while True:
+        # Start with the fixed part: digits (1 digit)
+        random_digits = random.choice(string.digits)  # Single digit
+
+        # Construct the random part following the pattern: (${nc}{2}\\d){3}${nc}
+        random_part = random_digits  # Start with the single digit
+        
+        for _ in range(3):  # Repeat the digit-letter pairs 3 times (to match the length)
+            # Two consonants from the allowed `nc` set
+            random_consonants = ''.join(random.choices("bcdfghjkmnpqrstvwxz", k=2))  # Two consonants
+            # One digit
+            random_part += random_consonants + random.choice(string.digits)  # Add consonants and digit
+
+        # Final consonant (to match ${nc})
+        random_part += random.choice("bcdfghjkmnpqrstvwxz")  # Add final consonant
+
+        # Construct the full NOID
+        generated_noid = f"{prefix}{type_char}{random_part}"
+
+        # Check for uniqueness based on noid_type
+        if noid_type == "canvas":
+            file, heads = get_file_from_swift(f"{generated_noid}.jpg", "access-files")
+            if file:  # If file exists, retry
+                continue
+            else:
+                return generated_noid.lower()
+
+        elif noid_type == "manifest":
+            file, heads = get_iiif_from_swift(f"{generated_noid}/manifest.json")
+            if file:  # If file exists, retry
+                continue
+            else:
+                return generated_noid.lower()
+            
+'''
 # Helper functions
 def mint_noid(noid_type):
     #TODO: replace with call to new ark service
     # Generate a NOID, like '69429/<type>0901zg73q7c' and make sure its unique
-    generated_noid = mint(template='zeedeedeedk', naa='69429')
+    # Define the prefix
+    prefix = "69429/"
+    # Choose the type part: 'm' for manifest, or 'c' for canvas
+    type_char = noid_type[0]  # 'm' or 'c'
+    # Generate the rest of the NOID using a random string (using digits and lowercase letters)
+    random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
+    # Construct the final NOID
+    generated_noid = f"{prefix}{type_char}{random_part}"
     if noid_type == "canvas":
-        generated_noid = generated_noid[:5] + '/c' + generated_noid[6:]
         file, heads = get_file_from_swift(f"{generated_noid}.jpg", "access-files")
         if file:
             mint_noid(noid_type)
         else:
-            return generated_noid
+            return generated_noid.lower()
     elif noid_type == "manifest":
-        generated_noid = generated_noid[:5] + '/m' + generated_noid[6:]
         file, heads = get_iiif_from_swift(f"{generated_noid}/manifest.json")
         if file:
             mint_noid(noid_type)
         else:
-            return generated_noid
+            return generated_noid.lower() '''
 
 def convert_image(source_file, output_path):
     original = Image.open(source_file)
@@ -134,7 +188,7 @@ def get_iiif_from_swift(swift_filename):
         return None, None
 
 # Helper function to process each file or URL
-def process_file_or_url(pos, file_or_url, is_url, manifest_noid):
+def process_file_or_url(file_or_url, is_url, manifest_noid):
     if is_url:
         response = requests.get(file_or_url)
         if response.status_code != 200:
@@ -144,7 +198,7 @@ def process_file_or_url(pos, file_or_url, is_url, manifest_noid):
     else:
         source_file = io.BytesIO(file_or_url)
 
-    canvas_noid = manifest_noid + f"-p{pos}" #mint_noid("canvas")
+    canvas_noid = mint_noid("canvas")
     print("new canvas id:", canvas_noid) #es: 69429/mCa08E9Je9k-p3
     encoded_canvas_noid = canvas_noid.replace("/", "%2F")
     swift_filename = f"{canvas_noid}.jpg"
@@ -343,23 +397,23 @@ async def create_files(prefix, noid, request: Request, authorized: bool = Depend
             status_code=500
         )
 
-@app.post("/uploadfiles/{prefix}/{noid}/{pos}")
-async def upload_files(prefix, noid, pos, files: List[bytes] = File(...), authorized: bool = Depends(verify_token)):
+@app.post("/uploadfiles/{prefix}/{noid}")
+async def upload_files(prefix, noid, files: List[bytes] = File(...), authorized: bool = Depends(verify_token)):
     if not authorized:
         return JSONResponse(content={"message": "You are not authorized to make this request."}, status_code=403)
     manifest_noid = f"{prefix}/{noid}"
     canvases = []
     for file in files:
         try:
-            canvas_data = process_file_or_url(pos, file, is_url=False, manifest_noid=manifest_noid)
+            canvas_data = process_file_or_url(file, is_url=False, manifest_noid=manifest_noid)
             if canvas_data:
                 canvases.append(canvas_data)
         except ValueError as e:
             return JSONResponse(content={"message": str(e)}, status_code=400)
     return {"canvases": canvases}
 
-@app.post("/createfilesfromurl/{prefix}/{noid}/{pos}")
-async def create_files_from_url(prefix, noid, pos, request: Request, authorized: bool = Depends(verify_token)):
+@app.post("/createfilesfromurl/{prefix}/{noid}")
+async def create_files_from_url(prefix, noid, request: Request, authorized: bool = Depends(verify_token)):
     if not authorized:
         return JSONResponse(content={"message": "You are not authorized to make this request."}, status_code=403)
     manifest_noid = f"{prefix}/{noid}"
@@ -367,7 +421,7 @@ async def create_files_from_url(prefix, noid, pos, request: Request, authorized:
     canvases = []
     for url in data['urls']:
         try:
-            canvas_data = process_file_or_url(pos, url, is_url=True, manifest_noid=manifest_noid)
+            canvas_data = process_file_or_url(url, is_url=True, manifest_noid=manifest_noid)
             if canvas_data:
                 canvases.append(canvas_data)
         except ValueError as e:
