@@ -1,1 +1,0 @@
-python -m gunicorn --bind :8000 --workers 1 --threads 1 main:app --timeout 60000000
