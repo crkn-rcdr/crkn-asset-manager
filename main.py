@@ -56,7 +56,7 @@ PRES_API_HOST = os.getenv("PRES_API_HOST")
 # API URLs
 image_api_url = "https://image-tor.canadiana.ca"
 presentation_api_url = "https://crkn-iiif-presentation-api.azurewebsites.net"
-crkn_digirati_editor_api_url = "https://crkn-editor.azurewebsites.net"
+crkn_digirati_editor_api_url = "https://crkn-asset-manager.azurewebsites.net"
 
 # Initialize connections
 connCanvas = swiftclient.Connection(
@@ -89,7 +89,6 @@ def mint_noid(noid_type):
     while True:
         random_digits = random.choice(string.digits) 
         random_part = random_digits 
-        
         for _ in range(3):
             random_consonants = ''.join(random.choices("bcdfghjkmnpqrstvwxz", k=2)) 
             random_part += random_consonants + random.choice(string.digits) 
@@ -215,7 +214,7 @@ sso = MicrosoftSSO(
     client_id=AAD_CLIENT_ID,
     client_secret=AAD_CLIENT_SECRET,
     tenant=AAD_TENANT_ID,
-    redirect_uri="http://localhost:8000/auth/callback",
+    redirect_uri=f"{crkn_digirati_editor_api_url}/auth/callback",
     allow_insecure_http=True,
 )
 
