@@ -8,7 +8,6 @@ import swiftclient
 import boto3
 import botocore
 import httpx
-import couchdb
 from PIL import Image
 from fastapi import FastAPI, HTTPException, Request, Response, Depends, Security, File
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
@@ -18,12 +17,12 @@ from fastapi_sso.sso.base import OpenID
 from jose import jwt
 from typing import List
 from typing_extensions import Annotated
-from dotenv import load_dotenv
-from noid import mint
 import random
 import string
+import uvicorn
+# from dotenv import load_dotenv
 # Load environment variables
-load_dotenv(".env")
+# load_dotenv(".env")
 
 # Azure Active Directory (AAD) configuration
 AAD_CLIENT_SECRET = os.getenv("AAD_CLIENT_SECRET")
@@ -378,3 +377,6 @@ async def create_files_from_url(prefix, noid, request: Request, authorized: bool
         except ValueError as e:
             return JSONResponse(content={"message": str(e)}, status_code=400)
     return {"canvases": canvases}
+
+if __name__ == '__main__':
+    uvicorn.run('main:app', host='0.0.0.0', port=8000)

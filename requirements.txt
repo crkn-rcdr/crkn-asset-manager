@@ -1,4 +1,3 @@
-CouchDB==1.2
 fastapi==0.115.2
 Pillow==11.0.0
 python-dotenv==1.0.1
@@ -11,6 +10,5 @@ fastapi-sso
 python-jose[cryptography]
 boto3
 botocore
-msal
 httpx
-noid 
+uvicorn
