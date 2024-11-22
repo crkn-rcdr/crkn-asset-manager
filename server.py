@@ -54,12 +54,6 @@ S3SOURCE_ACCESSFILES_BUCKET_NAME = os.getenv("S3SOURCE_ACCESSFILES_BUCKET_NAME")
 
 PRES_API_HOST = os.getenv("PRES_API_HOST")
 
-#COUCHDB_USER = os.getenv("COUCHDB_USER")
-#COUCHDB_PASSWORD = os.getenv("COUCHDB_PASSWORD")
-#COUCHDB_URL = os.getenv("COUCHDB_URL")
-#couch = couchdb.Server(f'http://{COUCHDB_USER}:{COUCHDB_PASSWORD}@{COUCHDB_URL}/')
-#db_canvas = couch['canvas']
-
 # API URLs
 image_api_url = "https://image-tor.canadiana.ca"
 presentation_api_url = "https://crkn-iiif-presentation-api.azurewebsites.net"
@@ -89,36 +83,20 @@ s3_conn = boto3.client(
 
 # TODO - replace with call to new ARK
 def mint_noid(noid_type):
-    # Ensure noid_type is either 'canvas' or 'manifest'
     if noid_type not in ['canvas', 'manifest']:
         raise ValueError("noid_type must be 'canvas' or 'manifest'")
-
-    # Define the prefix
     prefix = "69429/"
-
-    # Choose the type part: 'm' for manifest, or 'c' for canvas
     type_char = noid_type[0]  # 'm' for manifest, 'c' for canvas
-
-    # Loop until we get a unique NOID that matches the regex
     while True:
-        # Start with the fixed part: digits (1 digit)
-        random_digits = random.choice(string.digits)  # Single digit
-
-        # Construct the random part following the pattern: (${nc}{2}\\d){3}${nc}
-        random_part = random_digits  # Start with the single digit
+        random_digits = random.choice(string.digits) 
+        random_part = random_digits 
         
-        for _ in range(3):  # Repeat the digit-letter pairs 3 times (to match the length)
-            # Two consonants from the allowed `nc` set
-            random_consonants = ''.join(random.choices("bcdfghjkmnpqrstvwxz", k=2))  # Two consonants
-            # One digit
-            random_part += random_consonants + random.choice(string.digits)  # Add consonants and digit
-
-        # Final consonant (to match ${nc})
+        for _ in range(3):
+            random_consonants = ''.join(random.choices("bcdfghjkmnpqrstvwxz", k=2)) 
+            random_part += random_consonants + random.choice(string.digits) 
         random_part += random.choice("bcdfghjkmnpqrstvwxz")  # Add final consonant
-
         # Construct the full NOID
         generated_noid = f"{prefix}{type_char}{random_part}"
-
         # Check for uniqueness based on noid_type
         if noid_type == "canvas":
             file, heads = get_file_from_swift(f"{generated_noid}.jpg", "access-files")
@@ -126,39 +104,12 @@ def mint_noid(noid_type):
                 continue
             else:
                 return generated_noid.lower()
-
         elif noid_type == "manifest":
             file, heads = get_iiif_from_swift(f"{generated_noid}/manifest.json")
-            if file:  # If file exists, retry
+            if file:
                 continue
             else:
                 return generated_noid.lower()
-            
-'''
-# Helper functions
-def mint_noid(noid_type):
-    #TODO: replace with call to new ark service
-    # Generate a NOID, like '69429/<type>0901zg73q7c' and make sure its unique
-    # Define the prefix
-    prefix = "69429/"
-    # Choose the type part: 'm' for manifest, or 'c' for canvas
-    type_char = noid_type[0]  # 'm' or 'c'
-    # Generate the rest of the NOID using a random string (using digits and lowercase letters)
-    random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
-    # Construct the final NOID
-    generated_noid = f"{prefix}{type_char}{random_part}"
-    if noid_type == "canvas":
-        file, heads = get_file_from_swift(f"{generated_noid}.jpg", "access-files")
-        if file:
-            mint_noid(noid_type)
-        else:
-            return generated_noid.lower()
-    elif noid_type == "manifest":
-        file, heads = get_iiif_from_swift(f"{generated_noid}/manifest.json")
-        if file:
-            mint_noid(noid_type)
-        else:
-            return generated_noid.lower() '''
 
 def convert_image(source_file, output_path):
     original = Image.open(source_file)
