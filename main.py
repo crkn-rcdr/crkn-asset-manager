@@ -71,7 +71,6 @@ connIIIF = swiftclient.Connection(
     authurl=IIIF_SWIFT_AUTH_URL,
     preauthurl=IIIF_SWIFT_PREAUTH_URL
 )
-
 s3_conn = boto3.client(
     service_name="s3",
     aws_access_key_id=S3SOURCE_ACCESS_KEY_ID,
@@ -119,7 +118,11 @@ def save_image_to_swift(local_filename, swift_filename, container):
     with open(local_filename, "rb") as local_file:
         file_content = local_file.read()
         file_md5_hash = hashlib.md5(file_content).hexdigest()
-        connCanvas.put_object(container, swift_filename, contents=file_content)
+        swift_md5_hash = connCanvas.put_object(container, swift_filename, contents=file_content)
+        print("swift:", swift_md5_hash, swift_filename)
+        print("swift_filename:", swift_filename)
+        print("container:", container)
+        print("local_filename:",  local_filename)
     return file_md5_hash
 
 def get_file_from_swift(swift_filename, container):
@@ -247,7 +250,7 @@ async def main(cookie: str = Security(APIKeyCookie(name="token"))):
 
 @app.get("/auth/login")
 async def login():
-    with sso:
+    async with sso:
         return await sso.get_login_redirect()
 
 @app.get("/auth/logout")
@@ -259,7 +262,7 @@ async def logout():
 @app.get("/auth/callback")
 async def login_callback(request: Request):
     request.timeout = 100000000000000
-    with sso:
+    async with sso:
         openid = await sso.verify_and_process(request)
         if not openid:
             raise HTTPException(status_code=401, detail="Authentication failed")
@@ -353,12 +356,12 @@ async def upload_files(prefix, noid, files: List[bytes] = File(...), authorized:
     manifest_noid = f"{prefix}/{noid}"
     canvases = []
     for file in files:
-        try:
-            canvas_data = process_file_or_url(file, is_url=False, manifest_noid=manifest_noid)
-            if canvas_data:
-                canvases.append(canvas_data)
-        except ValueError as e:
-            return JSONResponse(content={"message": str(e)}, status_code=400)
+        #try:
+        canvas_data = process_file_or_url(file, is_url=False, manifest_noid=manifest_noid)
+        if canvas_data:
+            canvases.append(canvas_data)
+        #except ValueError as e:
+        #    return JSONResponse(content={"message": str(e)}, status_code=400)
     return {"canvases": canvases}
 
 @app.post("/createfilesfromurl/{prefix}/{noid}")

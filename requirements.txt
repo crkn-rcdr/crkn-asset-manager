@@ -11,4 +11,5 @@ python-jose[cryptography]
 boto3
 botocore
 httpx
+uvicorn
 gunicorn
